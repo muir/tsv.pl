@@ -1,0 +1,14 @@
+Revision history for Perl program tsv
+
+0.4 2013/10/09
+
+ - Added tests
+ - Changed behavior of --head to output one less line
+ - Tweaked documentation
+ - Fixed --default so it can be combined with other options (as per docs)
+ - Column names that aren't words now work with --select
+ - Add Changes file
+
+0.3 2009/07/24
+
+ - Initial public release
