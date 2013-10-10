@@ -2,3 +2,8 @@ Makefile.PL
 MANIFEST			This list of files
 tsv
 META.yml                                 Module meta-data (added by MakeMaker)
+Changes
+t/data/gi.tsv
+t/data/longer.tsv
+t/data/missing.tsv
+t/tsv.t
