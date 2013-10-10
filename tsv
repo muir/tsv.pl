@@ -8,7 +8,7 @@ use List::Util qw(sum);
 use strict;
 use warnings;
 
-our $VERSION = 0.3;
+our $VERSION = 0.4;
 
 my $match;
 my $rotate;
@@ -35,7 +35,7 @@ pod2usage() unless GetOptions(
 );
 pod2usage( '-verbose' => 2) if $help;
 pod2usage('Must say what to do, try --help') unless $match || $rotate || $validate || $show || $cut || $head || $default || @grep || $select;
-pod2usage('Only one option allowed') if sum(map { $_ ? 1 : 0 } $match, $rotate, $validate, $show, $cut, $default, (@grep ? 1 : 0), $select) > 1;
+pod2usage('Only one option allowed') if sum(map { $_ ? 1 : 0 } $match, $rotate, ($validate || $default ? 1 : 0), $show, $cut, (@grep ? 1 : 0), $select) > 1;
 
 if ($rotate || $match) {
 	my @cdata;
@@ -58,7 +58,7 @@ if ($rotate || $match) {
 		for my $i (0..$#d) {
 			push(@{$cdata[$i]}, $d[$i]);
 		}
-		last if $head && $count++ >= $head;
+		last if $head && ++$count >= $head;
 	}
 	for my $cd (@cdata) {
 		print join("\t", @$cd) . "\n";
@@ -81,7 +81,7 @@ if ($rotate || $match) {
 		chomp;
 		my @data = split(/\t/, $_, -1);
 		print join("\t", @data[@cutnum])."\n";
-		last if $head && $count++ >= $head;
+		last if $head && ++$count >= $head;
 	}
 } elsif ($show) {
 	my $header = <>;
@@ -89,7 +89,7 @@ if ($rotate || $match) {
 	$header =~ s/^#[A-Z]+# //;
 	my @cols = split(/\t/, $header, -1);
 	my $c = 1;
-	printf "% 6d %s\n", $c++, $_ for @cols;
+	printf "% 7d\t%s\n", $c++, $_ for @cols;
 } elsif ($validate) {
 	my $header = <>;
 	print $header;
@@ -107,8 +107,8 @@ if ($rotate || $match) {
 				1 while s/(^|\t)(\n|\t)/$1$default$2/g;
 			}
 			print;
+			last if $head && ++$count >= $head;
 		}
-		last if $head && $count++ >= $head;
 	}
 	if ($skipped) {
 		print STDERR "Discarded $skipped records (kept $okay records)\n";
@@ -121,11 +121,14 @@ if ($rotate || $match) {
 
 	my @my;
 	my @assign;
+	my %seen;
 
 	for my $col (@header) {
-		if ($col =~ /^[A-Za-z_]\w+$/) {
-			push(@my, "\$$col");
-			push(@assign, "\$$col");
+		my $x = $col;
+		$x =~ s/\W/_/g;
+		if ($x =~ /^[A-Za-z_]\w+$/) {
+			push(@my, "\$$x");
+			push(@assign, "\$$x");
 		} else {
 			push(@assign, 'undef');
 		}
@@ -147,10 +150,10 @@ if ($rotate || $match) {
 				$select
 			};
 			print "\$_\\n";
-			last if \$_head && \$_count++ >= \$_head;
+			last if \$_head && ++\$_count >= \$_head;
 		}
 END
-	# print STDERR $e;
+	#  print STDERR $e;
 	eval $e;
 	die $@ if $@;
 } elsif (@grep) {
@@ -172,7 +175,7 @@ END
 		my $s = join("\t", @data[@colnum]);
 		next unless $s =~ /$pattern/o;
 		print "$_\n";
-		last if $head && $count++ >= $head;
+		last if $head && ++$count >= $head;
 	}
 } elsif ($default) {
 	my $count = 0;
@@ -239,7 +242,7 @@ Turn the columns into rows and the rows into columns.
 
 =item --matchup FILE
 
-Grab the first row from FILE and then rotate.  Usually this
+Grab the first row from FILE and then rotate STDIN.  Usually this
 is used when with grep:
 
  grep stuff file.tsv | tsv --match file.tsv 
@@ -250,7 +253,12 @@ Look for PATTERN in COLUMNS (comma separate list, names or numbers)
 
 =item --select CODE
 
-Evaluate CODE.  Each column will be in the variable C<$colname>.
+Evaluate CODE.  The first row of the data must be column names.  The
+input will be split and assigned to variables named by the column names:
+if there is a column named C<best before>, then there will be a variable
+C<$best_before> that has the data corresponding to the C<best before> 
+column for that row.  The entire row will be in C<$_>.  The first row
+will always print since it's a header.
 A true value from the code will cause the line to print.  Do not use
 C<return>: the code is inside a while loop, not a sub.
 
@@ -262,15 +270,20 @@ header line.
 =item --default VALUE
 
 Replace empty values with VALUE.  This can be combined with --validate.
+This will not pad the number of columns to match the header.
 
 =item -n --head COUNT
 
-Only process COUNT lines of input.  This can be combined with
-all the other options except --show.
+Only process until there are COUNT lines of data output.  This can be
+combined with all the other options except --show.  The header does not
+count towards the count.
 
 =back
 
 =head1 LICENSE
+
+Copyright (C) 2008, 2009 David Sharnoff.
+Copyright (C) 2013 Google, Inc.
 
 This package may be used and redistributed under the terms of either
 the Artistic 2.0 or LGPL 2.1 license.

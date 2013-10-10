@@ -12,9 +12,19 @@ WriteMakefile(
 		'Pod::Usage'	=> 0,
 		'List::Util'	=> 0,
 	},
+	'BUILD_REQUIRES' => {
+		'File::Slurp'	=> 0,
+		'File::Temp'	=> 0,
+		'FindBin'	=> 0,
+	},
 	'PM'	=> {
 		tsv	=> '$(INST_LIBDIR)/TSV/Utility.pm',
 	},
 	'EXE_FILES'     => ['tsv'],
+	'META_MERGE'     => {
+		resources  => {
+			repository => 'http://github.com/muir/tsv.pl',
+		},
+	},
 );
 
