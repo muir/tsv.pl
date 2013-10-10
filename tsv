@@ -1,0 +1,277 @@
+#!/usr/bin/perl
+
+package TSV::Utility;
+
+use Getopt::Long;
+use Pod::Usage;
+use List::Util qw(sum);
+use strict;
+use warnings;
+
+our $VERSION = 0.3;
+
+my $match;
+my $rotate;
+my $validate;
+my $show;
+my $help;
+my $cut;
+my $head;
+my $default;
+my @grep;
+my $select;
+
+pod2usage() unless GetOptions(
+	'matchup=s'	=> \$match,
+	rotate		=> \$rotate,
+	validate	=> \$validate,
+	show		=> \$show,
+	help		=> \$help,
+	'cut|f=s'	=> \$cut,
+	'head|n=i'	=> \$head,
+	'default=s'	=> \$default,
+	'grep=s{2}'	=> \@grep,
+	'select=s'	=> \$select,
+);
+pod2usage( '-verbose' => 2) if $help;
+pod2usage('Must say what to do, try --help') unless $match || $rotate || $validate || $show || $cut || $head || $default || @grep || $select;
+pod2usage('Only one option allowed') if sum(map { $_ ? 1 : 0 } $match, $rotate, $validate, $show, $cut, $default, (@grep ? 1 : 0), $select) > 1;
+
+if ($rotate || $match) {
+	my @cdata;
+	my $count = -1;
+	if ($match) {
+		die unless -e $match;
+		my $tsv;
+		open $tsv, "<", $match || die;
+		my $header = <$tsv>;
+		chomp($header);
+		my @h = split(/\t/, $header, -1);
+		for my $i (0..$#h) {
+			push(@{$cdata[$i]}, $h[$i]);
+		}
+		$count = 0;
+	}
+	while (<>) {
+		chomp;
+		my (@d) = split(/\t/, $_, -1);
+		for my $i (0..$#d) {
+			push(@{$cdata[$i]}, $d[$i]);
+		}
+		last if $head && $count++ >= $head;
+	}
+	for my $cd (@cdata) {
+		print join("\t", @$cd) . "\n";
+	}
+} elsif ($cut) {
+	my @cut = split(/,/, $cut);
+	my $header = <>;
+	chomp($header);
+	$header =~ s/^#DSTSV# //;
+	my @cols = split(/\t/, $header, -1);
+	my $c = 1;
+	my %cols = map { $c => $c, $_ => $c++ } @cols;
+	for my $cut (@cut) {
+		die "No column $cut" unless $cols{$cut};
+	}
+	my @cutnum = map { $cols{$_} - 1 } @cut;
+	my $count = 0;
+	print join("\t", @cols[@cutnum])."\n";
+	while (<>) {
+		chomp;
+		my @data = split(/\t/, $_, -1);
+		print join("\t", @data[@cutnum])."\n";
+		last if $head && $count++ >= $head;
+	}
+} elsif ($show) {
+	my $header = <>;
+	chomp($header);
+	$header =~ s/^#[A-Z]+# //;
+	my @cols = split(/\t/, $header, -1);
+	my $c = 1;
+	printf "% 6d %s\n", $c++, $_ for @cols;
+} elsif ($validate) {
+	my $header = <>;
+	print $header;
+	my (@reference) = split(/\t/, $header);
+	my $skipped = 0;
+	my $okay = 0;
+	my $count = 0;
+	while (<>) {
+		my @count = split(/\t/, $_, -1);
+		if (@count != @reference) {
+			$skipped++;
+		} else {
+			$okay++;
+			if ($default) { 
+				1 while s/(^|\t)(\n|\t)/$1$default$2/g;
+			}
+			print;
+		}
+		last if $head && $count++ >= $head;
+	}
+	if ($skipped) {
+		print STDERR "Discarded $skipped records (kept $okay records)\n";
+	}
+} elsif ($select) {
+	my $header = <>;
+	print $header;
+	chomp($header);
+	my @header = split(/\t/, $header);
+
+	my @my;
+	my @assign;
+
+	for my $col (@header) {
+		if ($col =~ /^[A-Za-z_]\w+$/) {
+			push(@my, "\$$col");
+			push(@assign, "\$$col");
+		} else {
+			push(@assign, 'undef');
+		}
+	}
+
+	my $assign = join(', ', @assign);
+	my $my = join(', ', @my);
+
+	my $_count;
+	my $_head = $head;
+
+	my $e = <<END;
+		my ($my);
+		while (<>) {
+			chomp;
+			($assign) = split(/\t/, \$_, -1);
+			next unless do {
+				no warnings;
+				$select
+			};
+			print "\$_\\n";
+			last if \$_head && \$_count++ >= \$_head;
+		}
+END
+	# print STDERR $e;
+	eval $e;
+	die $@ if $@;
+} elsif (@grep) {
+	my ($cols, $pattern) = @grep;
+	my $header = <>;
+	chomp($header);
+	my @header = split(/\t/, $header);
+	my $c = 1;
+	my @cols = split(/,/, $cols);
+	my %cols = map { ($c => $c, $_ => $c++) } @header;
+	for my $col (@cols) {
+		die "No column $col" unless $cols{$col};
+	}
+	my @colnum = map { $cols{$_} - 1 } @cols;
+	my $count = 0;
+	while (<>) {
+		chomp;
+		my @data = split(/\t/, $_, -1);
+		my $s = join("\t", @data[@colnum]);
+		next unless $s =~ /$pattern/o;
+		print "$_\n";
+		last if $head && $count++ >= $head;
+	}
+} elsif ($default) {
+	my $count = 0;
+	while (<>) {
+		1 while s/(^|\t)(\n|\t)/$1$default$2/g;
+		print;
+		last if $head && $count++ >= $head;
+	}
+} elsif ($head) {
+	my $count = 0;
+	while (<>) {
+		print;
+		last if $count++ >= $head;
+	}
+} else {
+	die;
+}
+
+1;
+
+__END__
+
+=head1 NAME
+
+ tsv - general tsv file mangler
+
+=head1 USAGE
+
+ tsv [options] file(s)
+
+=head1 OPTIONS
+
+ --show			Display column names
+ -f --cut COL,COL,COL	like cut(1) but uses column names
+ --rotate		Turn columsn to rows
+ --matchup FILE		Rotate, grabbing header from FILE
+ --validate		Discards rows that have wrong column count
+ -n --head COUNT	Only process COUNT lines
+ --default VALUE	Replace empty values with VALUE
+ --grep COLS PATTERN	Search for pattern in cols
+ --select COLS CODE	Eval code on cols, output if returns true
+ --help			Display man page
+
+=head1 DESCRIPTION
+
+tsv is a collection of small tools for manipulating and reporting
+on TSV (tab separated values) files.
+
+=over
+
+=item --show
+
+Displays a numbered list of the columns
+
+=item --cut COLUMN_NAME(S)
+
+Outputs a new TSV with just the named columns.
+Columns must be named; separate column names with
+comma C<,>.
+
+=item --rotate
+
+Turn the columns into rows and the rows into columns.  
+
+=item --matchup FILE
+
+Grab the first row from FILE and then rotate.  Usually this
+is used when with grep:
+
+ grep stuff file.tsv | tsv --match file.tsv 
+
+=item --grep COLUMNS PATTERN
+
+Look for PATTERN in COLUMNS (comma separate list, names or numbers)
+
+=item --select CODE
+
+Evaluate CODE.  Each column will be in the variable C<$colname>.
+A true value from the code will cause the line to print.  Do not use
+C<return>: the code is inside a while loop, not a sub.
+
+=item --validate
+
+Only output rows that have the same number of columns as the
+header line.
+
+=item --default VALUE
+
+Replace empty values with VALUE.  This can be combined with --validate.
+
+=item -n --head COUNT
+
+Only process COUNT lines of input.  This can be combined with
+all the other options except --show.
+
+=back
+
+=head1 LICENSE
+
+This package may be used and redistributed under the terms of either
+the Artistic 2.0 or LGPL 2.1 license.
+
